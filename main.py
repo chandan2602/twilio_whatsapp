@@ -21,11 +21,6 @@ TWILIO_PHONE = os.getenv("TWILIO_PHONE_NO")
 user_sessions = {}
 user_data = {}
 
-def generate_credentials():
-    login_id = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
-    password = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
-    return login_id, password
-
 def save_user_data(phone, data):
     if not os.path.exists('users.json'):
         with open('users.json', 'w') as f:
@@ -47,46 +42,48 @@ async def whatsapp_webhook(Body: str = Form(...), From: str = Form(...)):
     # Initialize session for new user
     if user_phone not in user_sessions:
         user_sessions[user_phone] = {"step": "greeting", "data": {}}
-        ai_reply = "Welcome to KNCCI - a curated India-Kenya business introduction platform.\n\nPlease answer a few questions to submit your application. All profiles are vetted before approval.\n\nReply 'Start' to begin."
+        ai_reply = "Welcome to KNCCI.\n\nThis is a curated India-Kenya business introduction network designed for serious operators, institutional players, and long-term partnerships.\n\nI'll guide you through a few questions to understand your positioning, intent, and expansion priorities. Our objective is not volume — it is precision. Every profile is reviewed carefully before introductions are made.\n\nWhen you're ready, please say 'Start'."
     else:
         session = user_sessions[user_phone]
         step = session["step"]
         
         if step == "greeting":
-            if "start" in user_message or "yes" in user_message:
-                session["step"] = "q1_full_name"
-                ai_reply = "Q1. What is your Full Name?"
+            if "start" in user_message or "yes" in user_message or "begin" in user_message:
+                session["step"] = "ask_full_name"
+                ai_reply = "Thank you. Let's begin with identity and leadership context.\n\nMay I have your full name?"
             else:
-                ai_reply = "Reply 'Start' to begin your application."
+                ai_reply = "When you're ready to begin, please say 'Start'."
         
-        elif step == "q1_full_name":
+        elif step == "ask_full_name":
             session["data"]["full_name"] = Body.strip()
-            session["step"] = "q2_company_name"
-            ai_reply = "Q2. What is your Company / Organization Name?"
+            first_name = Body.strip().split()[0] if Body.strip() else "there"
+            session["data"]["first_name"] = first_name
+            session["step"] = "ask_company_name"
+            ai_reply = f"Thank you, {first_name}.\n\nKindly confirm the name of your organization."
         
-        elif step == "q2_company_name":
+        elif step == "ask_company_name":
             session["data"]["company_name"] = Body.strip()
-            session["step"] = "q3_designation"
-            ai_reply = "Q3. What is your Designation / Role in the organization?"
+            session["step"] = "ask_designation"
+            ai_reply = "Understood.\n\nWhat is your role within the organization?\n\nIn one or two sentences, please share the mandate you hold and the decisions you influence."
         
-        elif step == "q3_designation":
+        elif step == "ask_designation":
             session["data"]["designation"] = Body.strip()
-            session["step"] = "q4_country"
-            ai_reply = "Q4. Which country are you based in?\n\nPlease choose:\n1. India\n2. Kenya\n3. Other"
+            session["step"] = "ask_country"
+            ai_reply = "Thank you.\n\nTo contextualize your network relevance — which country are you currently operating from?\n\nPlease choose:\n1. India\n2. Kenya\n3. Other"
         
-        elif step == "q4_country":
+        elif step == "ask_country":
             country_map = {"1": "India", "2": "Kenya", "3": "Other"}
             country = country_map.get(user_message, Body.strip())
             session["data"]["country"] = country
-            session["step"] = "q5_city"
-            ai_reply = "Q5. Which city are you located in?"
+            session["step"] = "ask_city"
+            ai_reply = "And your primary city of operations?"
         
-        elif step == "q5_city":
+        elif step == "ask_city":
             session["data"]["city"] = Body.strip()
-            session["step"] = "q6_industry"
-            ai_reply = "Q6. What industry does your company operate in?\n\nPlease choose:\n1. Technology\n2. Manufacturing\n3. Agriculture\n4. Healthcare\n5. Education\n6. Logistics\n7. Finance\n8. Energy\n9. Others"
+            session["step"] = "ask_industry"
+            ai_reply = "Noted.\n\nNow, at a strategic level — which industry defines your core business activity?\n\nPlease choose:\n1. Technology\n2. Manufacturing\n3. Agriculture\n4. Healthcare\n5. Education\n6. Logistics\n7. Finance\n8. Energy\n9. Others"
         
-        elif step == "q6_industry":
+        elif step == "ask_industry":
             industry_map = {
                 "1": "Technology",
                 "2": "Manufacturing",
@@ -100,10 +97,19 @@ async def whatsapp_webhook(Body: str = Form(...), From: str = Form(...)):
             }
             industry = industry_map.get(user_message, Body.strip())
             session["data"]["industry"] = industry
-            session["step"] = "q7_company_stage"
-            ai_reply = "Q7. What is your company stage?\n\nPlease choose:\n1. Startup\n2. Growth Stage\n3. SME\n4. Enterprise\n5. Institution / Government"
+            session["step"] = "ask_business_description"
+            
+            if industry in ["Technology", "1"]:
+                ai_reply = f"{industry} is a wide spectrum.\n\nTo ensure we curate relevant introductions, please briefly describe:\n\n• Your primary offerings (products, platforms, or services)\n• Target customers or markets\n• Current growth priorities\n\nClarity here determines the quality of introductions."
+            else:
+                ai_reply = f"Understood — {industry}.\n\nTo ensure we curate relevant introductions, please briefly describe:\n\n• Your primary offerings\n• Target customers or markets\n• Current growth priorities\n\nClarity here determines the quality of introductions."
         
-        elif step == "q7_company_stage":
+        elif step == "ask_business_description":
+            session["data"]["business_description"] = Body.strip()
+            session["step"] = "ask_company_stage"
+            ai_reply = "Thank you.\n\nHow would you classify your company's current stage?\n\nPlease choose:\n1. Startup\n2. Growth Stage\n3. SME\n4. Enterprise\n5. Institution / Government"
+        
+        elif step == "ask_company_stage":
             stage_map = {
                 "1": "Startup",
                 "2": "Growth Stage",
@@ -113,10 +119,16 @@ async def whatsapp_webhook(Body: str = Form(...), From: str = Form(...)):
             }
             stage = stage_map.get(user_message, Body.strip())
             session["data"]["company_stage"] = stage
-            session["step"] = "q8_partnership_type"
-            ai_reply = "Q8. What type of partnership or opportunity are you looking for?\n\nPlease choose:\n1. Distributor\n2. Investor\n3. Technology Partner\n4. Local Business Partner\n5. Strategic Partnership\n6. Institutional Collaboration\n7. Market Expansion"
+            session["step"] = "ask_partnership_type"
+            
+            if stage in ["Enterprise", "4"]:
+                ai_reply = "Understood.\n\nAt the enterprise level, partnerships must be deliberate.\n\nWhat type of engagement are you actively seeking within the India-Kenya corridor?\n\nPlease choose:\n1. Distributor\n2. Investor\n3. Technology Partner\n4. Local Business Partner\n5. Strategic Partnership\n6. Institutional Collaboration\n7. Market Expansion"
+            elif stage in ["Institution / Government", "5"]:
+                ai_reply = "Noted.\n\nInstitutional alignment requires precision.\n\nWhat type of engagement are you actively seeking within the India-Kenya corridor?\n\nPlease choose:\n1. Distributor\n2. Investor\n3. Technology Partner\n4. Local Business Partner\n5. Strategic Partnership\n6. Institutional Collaboration\n7. Market Expansion"
+            else:
+                ai_reply = "Understood.\n\nWhat type of engagement are you actively seeking within the India-Kenya corridor?\n\nPlease choose:\n1. Distributor\n2. Investor\n3. Technology Partner\n4. Local Business Partner\n5. Strategic Partnership\n6. Institutional Collaboration\n7. Market Expansion"
         
-        elif step == "q8_partnership_type":
+        elif step == "ask_partnership_type":
             partnership_map = {
                 "1": "Distributor",
                 "2": "Investor",
@@ -128,54 +140,39 @@ async def whatsapp_webhook(Body: str = Form(...), From: str = Form(...)):
             }
             partnership = partnership_map.get(user_message, Body.strip())
             session["data"]["partnership_type"] = partnership
-            session["step"] = "q9_target_market"
-            ai_reply = "Q9. Which market are you targeting?\n\nPlease choose:\n1. India\n2. Kenya\n3. Both"
+            session["step"] = "ask_target_market"
+            ai_reply = "Appreciated.\n\nWhich market are you targeting?\n\nPlease choose:\n1. India\n2. Kenya\n3. Both"
         
-        elif step == "q9_target_market":
+        elif step == "ask_target_market":
             market_map = {"1": "India", "2": "Kenya", "3": "Both"}
             market = market_map.get(user_message, Body.strip())
             session["data"]["target_market"] = market
-            session["step"] = "q10_business_description"
-            ai_reply = "Q10. Please provide a short description of your business and the partnership you are seeking (max 200-300 words)."
+            session["step"] = "ask_profile_link"
+            ai_reply = "Noted.\n\nFor verification and context, please share your company website, LinkedIn profile, or institutional profile link."
         
-        elif step == "q10_business_description":
-            session["data"]["business_description"] = Body.strip()
-            session["step"] = "q11_profile_link"
-            ai_reply = "Q11. Please share your website, LinkedIn profile, or company profile link."
-        
-        elif step == "q11_profile_link":
+        elif step == "ask_profile_link":
             session["data"]["profile_link"] = Body.strip()
-            session["step"] = "q12_email"
-            ai_reply = "Q12. Please provide your official email address for verification."
+            session["step"] = "ask_email"
+            ai_reply = "Thank you.\n\nFinally, please provide your official email address for verification and future correspondence."
         
-        elif step == "q12_email":
+        elif step == "ask_email":
             session["data"]["email"] = Body.strip()
             save_user_data(user_phone, session["data"])
             
-            # Get partner examples based on partnership type
-            partner_info = ""
-            partnership = session["data"].get("partnership_type", "")
-            
-            if partnership == "Distributor":
-                partner_info = "\n\nSample Distributors in Our Network:\n\nSimba Corporation (Kenya)\nSectors: Electronics, Automotive\nWebsite: https://www.simbacorp.com\n\nMetro Wholesale India\nSectors: FMCG, Consumer goods\nWebsite: https://www.metrowholesale.in"
-            elif partnership == "Investor":
-                partner_info = "\n\nSample Investors in Our Network:\n\nAccel Partners India\nFocus: Early to growth stage\nWebsite: https://www.accel.com\n\nChandaria Capital (Kenya)\nFocus: Manufacturing, FMCG\nWebsite: https://chandaria.com"
-            elif partnership == "Technology Partner":
-                partner_info = "\n\nSample Tech Partners in Our Network:\n\nTechMahindra (India)\nServices: Digital transformation, AI/ML\nWebsite: https://www.techmahindra.com\n\nCraft Silicon (Kenya)\nServices: Banking software, Fintech\nWebsite: https://www.craftsilicon.com"
-            elif partnership == "Local Business Partner":
-                partner_info = "\n\nSample Local Partners in Our Network:\n\nSameer Group (Kenya)\nSectors: Real estate, Manufacturing\nWebsite: https://www.sameergroup.com\n\nTata International (India)\nSectors: Multi-sector conglomerate\nWebsite: https://www.tatainternational.com"
-            
-            ai_reply = "Thank you. Your application has been submitted successfully. Our team will review your profile and notify you once approved." + partner_info
+            first_name = session["data"].get("first_name", "")
+            ai_reply = f"Thank you, {first_name}.\n\nYour application has been submitted successfully.\n\nOur team will review your profile with care. You will be notified once your profile is vetted and relevant introductions become available.\n\nWe prioritize quality over speed — expect to hear from us within 3-5 business days."
             session["step"] = "completed"
         
         else:
             # Completed or general queries
-            if "match" in user_message or "connection" in user_message or "how" in user_message:
-                ai_reply = "We suggest connections based on industry, goals, geography, and business stage. Both parties must agree before an introduction.\n\nOur team will review your profile and reach out with potential matches."
+            if "status" in user_message or "update" in user_message:
+                ai_reply = "Your application is under review by the KNCCI team. We prioritize precision in our matching process.\n\nYou will be contacted directly once relevant opportunities are identified."
+            elif "match" in user_message or "connection" in user_message or "introduction" in user_message:
+                ai_reply = "KNCCI operates on a curated introduction model.\n\nWe match based on industry alignment, strategic intent, geographic focus, and business stage. Both parties must consent before any introduction is made.\n\nOur team will reach out when a relevant match is identified."
             elif "support" in user_message or "help" in user_message or "contact" in user_message:
-                ai_reply = "Our team will review and get in touch shortly. Thank you for your patience."
+                ai_reply = "For any inquiries, our team will respond within 24-48 hours.\n\nThank you for your patience."
             else:
-                ai_reply = "Your application is under review. The KNCCI Expert Team will contact you once your profile is vetted."
+                ai_reply = "Your application is currently under review.\n\nThe KNCCI team will contact you once your profile is vetted and relevant opportunities are identified.\n\nWe appreciate your patience."
     
     resp = MessagingResponse()
     resp.message(ai_reply)
